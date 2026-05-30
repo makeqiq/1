@@ -1,0 +1,249 @@
+-- XA-Hub Delta 完全修复版
+local success, err = pcall(function()
+    -- 修复：Delta 使用 PlayerGui 而不是 CoreGui
+    local UIParent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- 手动模拟 Lua_Ware UI 库（因为原脚本依赖的外部库可能在 Delta 上失效）
+    local UI = {}
+    UI.flags = {}
+    UI.window = function(config)
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "XA_Hub_Delta"
+        ScreenGui.Parent = UIParent
+        ScreenGui.ResetOnSpawn = false
+        
+        local MainFrame = Instance.new("Frame")
+        MainFrame.Parent = ScreenGui
+        MainFrame.Size = UDim2.new(0, 550, 0, 400)
+        MainFrame.Position = UDim2.new(0.5, -275, 0.5, -200)
+        MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        MainFrame.BackgroundTransparency = 0.1
+        MainFrame.Active = true
+        MainFrame.Draggable = true
+        Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+        
+        local TitleBar = Instance.new("Frame")
+        TitleBar.Parent = MainFrame
+        TitleBar.Size = UDim2.new(1, 0, 0, 35)
+        TitleBar.BackgroundColor3 = Color3.fromRGB(35, 40, 70)
+        Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+        
+        local Title = Instance.new("TextLabel")
+        Title.Parent = TitleBar
+        Title.Size = UDim2.new(1, 0, 1, 0)
+        Title.BackgroundTransparency = 1
+        Title.Text = config.Title or "XA-Hub"
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.TextSize = 18
+        Title.Font = Enum.Font.GothamBold
+        
+        local CloseBtn = Instance.new("TextButton")
+        CloseBtn.Parent = TitleBar
+        CloseBtn.Size = UDim2.new(0, 35, 1, 0)
+        CloseBtn.Position = UDim2.new(1, -35, 0, 0)
+        CloseBtn.BackgroundTransparency = 1
+        CloseBtn.Text = "X"
+        CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+        CloseBtn.TextSize = 18
+        CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+        
+        local TabContainer = Instance.new("Frame")
+        TabContainer.Parent = MainFrame
+        TabContainer.Position = UDim2.new(0, 0, 0, 35)
+        TabContainer.Size = UDim2.new(1, 0, 1, -35)
+        TabContainer.BackgroundTransparency = 1
+        
+        return {
+            TabContainer = TabContainer,
+            ScreenGui = ScreenGui,
+            MainFrame = MainFrame
+        }
+    end
+    
+    UI.tab = function(parent, name)
+        local TabButton = Instance.new("TextButton")
+        TabButton.Parent = parent.Parent:FindFirstChild("MainFrame") or parent
+        TabButton.Size = UDim2.new(0, 100, 0, 30)
+        TabButton.Position = UDim2.new(0, 10 + (#UI.flags._tabs or 0) * 105, 0, 40)
+        TabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        TabButton.Text = name
+        TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Instance.new("UICorner", TabButton).CornerRadius = UDim.new(0, 4)
+        
+        local TabPage = Instance.new("ScrollingFrame")
+        TabPage.Parent = parent.TabContainer
+        TabPage.Size = UDim2.new(1, -10, 1, -10)
+        TabPage.Position = UDim2.new(0, 5, 0, 5)
+        TabPage.BackgroundTransparency = 1
+        TabPage.Visible = false
+        TabPage.ScrollBarThickness = 4
+        
+        local PageLayout = Instance.new("UIListLayout")
+        PageLayout.Parent = TabPage
+        PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        PageLayout.Padding = UDim.new(0, 8)
+        
+        if not UI.flags._tabs then UI.flags._tabs = {} end
+        table.insert(UI.flags._tabs, {Button = TabButton, Page = TabPage})
+        
+        if #UI.flags._tabs == 1 then
+            TabPage.Visible = true
+            TabButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+        end
+        
+        TabButton.MouseButton1Click:Connect(function()
+            for _, tab in ipairs(UI.flags._tabs) do
+                tab.Page.Visible = false
+                tab.Button.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+            end
+            TabPage.Visible = true
+            TabButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+        end)
+        
+        return TabPage
+    end
+    
+    UI.section = function(parent, text)
+        local SectionFrame = Instance.new("Frame")
+        SectionFrame.Parent = parent
+        SectionFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+        SectionFrame.Size = UDim2.new(1, -10, 0, 35)
+        SectionFrame.BackgroundTransparency = 0.3
+        Instance.new("UICorner", SectionFrame).CornerRadius = UDim.new(0, 4)
+        
+        local Label = Instance.new("TextLabel")
+        Label.Parent = SectionFrame
+        Label.Size = UDim2.new(1, -20, 1, 0)
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = text
+        Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Label.TextSize = 16
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local Container = Instance.new("Frame")
+        Container.Parent = parent
+        Container.BackgroundTransparency = 1
+        Container.Size = UDim2.new(1, -10, 0, 0)
+        
+        local ContainerLayout = Instance.new("UIListLayout")
+        ContainerLayout.Parent = Container
+        ContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        ContainerLayout.Padding = UDim.new(0, 5)
+        
+        ContainerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            Container.Size = UDim2.new(1, -10, 0, ContainerLayout.AbsoluteContentSize.Y)
+        end)
+        
+        return Container
+    end
+    
+    UI.toggle = function(parent, config)
+        local frame = Instance.new("Frame")
+        frame.Parent = parent
+        frame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        frame.Size = UDim2.new(1, 0, 0, 35)
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+        
+        local label = Instance.new("TextLabel")
+        label.Parent = frame
+        label.Size = UDim2.new(1, -60, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = config.Text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local toggle = Instance.new("TextButton")
+        toggle.Parent = frame
+        toggle.Size = UDim2.new(0, 40, 0, 25)
+        toggle.Position = UDim2.new(1, -50, 0.5, -12.5)
+        toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+        toggle.Text = ""
+        Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+        
+        local state = false
+        toggle.MouseButton1Click:Connect(function()
+            state = not state
+            toggle.BackgroundColor3 = state and Color3.fromRGB(60, 200, 60) or Color3.fromRGB(200, 60, 60)
+            if config.Callback then config.Callback(state) end
+        end)
+        
+        if config.Default then
+            state = true
+            toggle.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
+            if config.Callback then config.Callback(true) end
+        end
+        
+        UI.flags[config.Flag] = state
+        return toggle
+    end
+    
+    UI.button = function(parent, config)
+        local btn = Instance.new("TextButton")
+        btn.Parent = parent
+        btn.Size = UDim2.new(1, 0, 0, 35)
+        btn.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
+        btn.Text = config.Text
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.TextSize = 16
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+        btn.MouseButton1Click:Connect(config.Callback)
+        return btn
+    end
+    
+    UI.dropdown = function(parent, config)
+        local frame = Instance.new("Frame")
+        frame.Parent = parent
+        frame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        frame.Size = UDim2.new(1, 0, 0, 35)
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+        
+        local label = Instance.new("TextLabel")
+        label.Parent = frame
+        label.Size = UDim2.new(0.4, 0, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = config.Text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local dropdown = Instance.new("TextButton")
+        dropdown.Parent = frame
+        dropdown.Size = UDim2.new(0.4, 0, 0, 25)
+        dropdown.Position = UDim2.new(0.5, 0, 0.5, -12.5)
+        dropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        dropdown.Text = config.Options[1] or ""
+        dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Instance.new("UICorner", dropdown).CornerRadius = UDim.new(0, 4)
+        
+        local selected = config.Options[1] or ""
+        UI.flags[config.Flag] = selected
+        
+        dropdown.MouseButton1Click:Connect(function()
+            -- 简单轮换选项
+            local currentIdx = table.find(config.Options, selected) or 1
+            local nextIdx = currentIdx % #config.Options + 1
+            selected = config.Options[nextIdx]
+            dropdown.Text = selected
+            UI.flags[config.Flag] = selected
+            if config.Callback then config.Callback(selected) end
+        end)
+        
+        return dropdown
+    end
+    
+    UI.slider = function(parent, config)
+        local frame = Instance.new("Frame")
+        frame.Parent = parent
+        frame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        frame.Size = UDim2.new(1, 0, 0, 50)
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+        
+        local label = Instance.new("TextLabel")
+        label.Parent = frame
+        label.Size = UDim2.new(1, -20, 0, 25)
+        label.Position = UDim2.new(0, 10, 0, 5)
+        label.BackgroundTransparency = 1
+        label.Text = config.Text .. ": " .. tostring(config.Default or config.Min)
+        label.TextColor3 = Color3.fromRGB(255, 255,
