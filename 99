@@ -1,0 +1,275 @@
+--[[
+    XA-Hub 完整 GUI 脚本
+    功能：提供一个带标签页、开关、滑动条、下拉框的图形界面
+    版本：Beta-4.7.1
+]]
+
+--------------------------------------------------------------------------------
+-- 1. 服务初始化与工具函数
+--------------------------------------------------------------------------------
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- 状态存储
+local Flags = {}
+local SelectedPlayer = nil
+
+-- 获取 UI 父级（优先 CoreGui，其次 PlayerGui）
+local function GetUIParent()
+    local success, parent = pcall(function() return game:GetService("CoreGui") end)
+    if success and parent then return parent end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- 清除旧 UI 避免重复
+for _, gui in pairs(GetUIParent():GetChildren()) do
+    if gui.Name == "XA_LuaWare" then gui:Destroy() end
+end
+
+--------------------------------------------------------------------------------
+-- 2. 创建主 GUI 容器
+--------------------------------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "XA_LuaWare"
+ScreenGui.Parent = GetUIParent()
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- 主窗口框架
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "Main"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BackgroundTransparency = 0.5
+MainFrame.Position = UDim2.new(0.5, -286, 0.5, -176)
+MainFrame.Size = UDim2.new(0, 572, 0, 353)
+MainFrame.Active = true
+MainFrame.Draggable = true
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 3)
+
+-- 侧边栏
+local SideBar = Instance.new("Frame")
+SideBar.Parent = MainFrame
+SideBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SideBar.BackgroundTransparency = 0.5
+SideBar.Size = UDim2.new(0, 8, 0, 353)
+Instance.new("UICorner", SideBar).CornerRadius = UDim.new(0, 6)
+
+local SideContent = Instance.new("Frame")
+SideContent.Parent = SideBar
+SideContent.BackgroundColor3 = Color3.fromRGB(35, 40, 70)
+SideContent.Size = UDim2.new(0, 110, 0, 353)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Parent = SideContent
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 5, 0, 10)
+TitleLabel.Size = UDim2.new(0, 102, 0, 20)
+TitleLabel.Font = Enum.Font.GothamSemibold
+TitleLabel.Text = "XA-Hub"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 18
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- 标签页按钮滚动区
+local TabScroll = Instance.new("ScrollingFrame")
+TabScroll.Parent = SideContent
+TabScroll.BackgroundTransparency = 1
+TabScroll.Position = UDim2.new(0, 0, 0.1, 0)
+TabScroll.Size = UDim2.new(0, 110, 0, 310)
+TabScroll.CanvasSize = UDim2.new(0, 0, 1, 0)
+TabScroll.ScrollBarThickness = 0
+
+local TabListLayout = Instance.new("UIListLayout")
+TabListLayout.Parent = TabScroll
+TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabListLayout.Padding = UDim.new(0, 12)
+
+-- 内容显示区
+local TabContainer = Instance.new("Frame")
+TabContainer.Parent = MainFrame
+TabContainer.BackgroundTransparency = 1
+TabContainer.Position = UDim2.new(0, 120, 0, 3)
+TabContainer.Size = UDim2.new(0, 448, 0, 346)
+
+-- 隐藏/显示按钮
+local ToggleUIButton = Instance.new("TextButton")
+ToggleUIButton.Parent = ScreenGui
+ToggleUIButton.BackgroundColor3 = Color3.fromRGB(28, 33, 55)
+ToggleUIButton.Position = UDim2.new(0, 20, 0.3, 0)
+ToggleUIButton.Size = UDim2.new(0, 60, 0, 30)
+ToggleUIButton.Text = "隐藏/打开"
+ToggleUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleUIButton.Draggable = true
+ToggleUIButton.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+
+--------------------------------------------------------------------------------
+-- 3. UI 组件构建函数（标签页、分区、开关、滑动条、下拉框）
+--------------------------------------------------------------------------------
+local Tabs = {}
+
+-- 创建标签页
+local function CreateTab(name)
+    local TabButtonFrame = Instance.new("ImageLabel")
+    TabButtonFrame.Parent = TabScroll
+    TabButtonFrame.BackgroundTransparency = 1
+    TabButtonFrame.Size = UDim2.new(0, 110, 0, 24)
+
+    local TabLabel = Instance.new("TextLabel")
+    TabLabel.Parent = TabButtonFrame
+    TabLabel.BackgroundTransparency = 1
+    TabLabel.Position = UDim2.new(0, 15, 0, 0)
+    TabLabel.Size = UDim2.new(0, 80, 1, 0)
+    TabLabel.Font = Enum.Font.GothamSemibold
+    TabLabel.Text = name
+    TabLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TabLabel.TextSize = 14
+    TabLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TabLabel.TextTransparency = 0.5
+
+    local TabBtn = Instance.new("TextButton")
+    TabBtn.Parent = TabButtonFrame
+    TabBtn.BackgroundTransparency = 1
+    TabBtn.Size = UDim2.new(1, 0, 1, 0)
+    TabBtn.Text = ""
+
+    local TabPage = Instance.new("ScrollingFrame")
+    TabPage.Parent = TabContainer
+    TabPage.BackgroundTransparency = 1
+    TabPage.Size = UDim2.new(1, 0, 1, 0)
+    TabPage.Visible = false
+    TabPage.ScrollBarThickness = 2
+
+    local PageLayout = Instance.new("UIListLayout")
+    PageLayout.Parent = TabPage
+    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PageLayout.Padding = UDim.new(0, 6)
+
+    TabBtn.MouseButton1Click:Connect(function()
+        for _, page in pairs(TabContainer:GetChildren()) do page.Visible = false end
+        for _, btn in pairs(TabScroll:GetChildren()) do
+            if btn:IsA("ImageLabel") and btn:FindFirstChild("TextLabel") then
+                TweenService:Create(btn.TextLabel, TweenInfo.new(0.2), {TextTransparency = 0.5}):Play()
+            end
+        end
+        TabPage.Visible = true
+        TweenService:Create(TabLabel, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
+    end)
+
+    if #Tabs == 0 then
+        TabPage.Visible = true
+        TabLabel.TextTransparency = 0
+    end
+    table.insert(Tabs, TabPage)
+    return TabPage
+end
+
+-- 创建分区
+local function CreateSection(parent, text)
+    local Container = Instance.new("Frame")
+    Container.Parent = parent
+    Container.BackgroundTransparency = 1
+    Container.Size = UDim2.new(0.98, 0, 0, 0)
+    
+    local SectionLabel = Instance.new("TextLabel")
+    SectionLabel.Parent = Container
+    SectionLabel.BackgroundTransparency = 1
+    SectionLabel.Size = UDim2.new(1, 0, 0, 30)
+    SectionLabel.Font = Enum.Font.GothamSemibold
+    SectionLabel.Text = text
+    SectionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SectionLabel.TextSize = 16
+    SectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local ItemsContainer = Instance.new("Frame")
+    ItemsContainer.Parent = Container
+    ItemsContainer.BackgroundTransparency = 1
+    ItemsContainer.Position = UDim2.new(0, 10, 0, 30)
+    ItemsContainer.Size = UDim2.new(1, -20, 0, 0)
+    
+    local Layout = Instance.new("UIListLayout")
+    Layout.Parent = ItemsContainer
+    Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    Layout.Padding = UDim.new(0, 8)
+    
+    Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        ItemsContainer.Size = UDim2.new(1, -20, 0, Layout.AbsoluteContentSize.Y)
+        Container.Size = UDim2.new(0.98, 0, 0, 30 + Layout.AbsoluteContentSize.Y)
+    end)
+    
+    return ItemsContainer
+end
+
+-- 创建开关 (Toggle)
+local function CreateToggle(parent, text, flagKey, default)
+    local frame = Instance.new("Frame")
+    frame.Parent = parent
+    frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    frame.Size = UDim2.new(1, 0, 0, 30)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+    
+    local label = Instance.new("TextLabel")
+    label.Parent = frame
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.Size = UDim2.new(1, -60, 1, 0)
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local button = Instance.new("TextButton")
+    button.Parent = frame
+    button.BackgroundColor3 = default and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+    button.Position = UDim2.new(1, -35, 0, 5)
+    button.Size = UDim2.new(0, 30, 0, 20)
+    button.Text = ""
+    Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
+    
+    Flags[flagKey] = default
+    button.MouseButton1Click:Connect(function()
+        Flags[flagKey] = not Flags[flagKey]
+        button.BackgroundColor3 = Flags[flagKey] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+    end)
+end
+
+-- 创建滑动条 (Slider)
+local function CreateSlider(parent, text, flagKey, min, max, default)
+    local frame = Instance.new("Frame")
+    frame.Parent = parent
+    frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    frame.Size = UDim2.new(1, 0, 0, 50)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
+    
+    local label = Instance.new("TextLabel")
+    label.Parent = frame
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0, 10, 0, 5)
+    label.Size = UDim2.new(1, -20, 0, 20)
+    label.Text = text .. ": " .. tostring(default)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local slider = Instance.new("Frame")
+    slider.Parent = frame
+    slider.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    slider.Position = UDim2.new(0, 10, 0, 30)
+    slider.Size = UDim2.new(1, -20, 0, 4)
+    Instance.new("UICorner", slider).CornerRadius = UDim.new(1, 0)
+    
+    local fill = Instance.new("Frame")
+    fill.Parent = slider
+    fill.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    
+    local grab = Instance.new("TextButton")
+    grab.Parent = slider
+    grab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    grab.Position = UDim2.new((default - min) / (max - min), -8, 0, -3)
+    grab.Size = UDim2.new(0, 16, 0, 16)
+    grab.Text = ""
+    Instance.new("UICorner", grab).CornerRadius = UDim.new(1, 0)
+    
+    Flags[flagKey] = d
