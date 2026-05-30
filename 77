@@ -1,0 +1,293 @@
+--[[
+    XA-Hub 源代码还原版
+    修复与重构: Claude
+    版本: Beta-4.7.1 (还原)
+]]
+
+--------------------------------------------------------------------------------
+-- 1. 服务与初始化
+--------------------------------------------------------------------------------
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- 检查并创建工作目录
+if not isfolder("XA-Hub") then makefolder("XA-Hub") end
+if not isfolder("XA-Hub/Music") then makefolder("XA-Hub/Music") end
+
+--------------------------------------------------------------------------------
+-- 2. 加载外部库 (ESP, UI组件, 通知等)
+--------------------------------------------------------------------------------
+
+-- 加载 ESP 库
+local Success_ESP, ESPLibrary = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Xingtaiduan/Script/refs/heads/main/ESPLibrary.lua"))()
+end)
+
+if not Success_ESP then warn("ESP Library failed to load") end
+
+-- 加载通知库
+local Success_Notify, NotifyLib = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Xingtaiduan/Script/refs/heads/main/Library/Notification.lua"))()
+end)
+
+-- 加载翻译表 (模拟原脚本逻辑)
+local Translations = {
+    ["通用"] = "通用",
+    ["信息"] = "信息",
+    ["本地玩家"] = "本地玩家",
+    ["传送"] = "传送",
+    ["甩飞"] = "甩飞",
+    ["循环甩飞"] = "循环甩飞",
+    ["移动速度"] = "移动速度",
+    ["跳跃高度"] = "跳跃高度",
+    ["重力"] = "重力",
+    ["视角"] = "视角",
+    ["最大倾斜角"] = "最大倾斜角",
+    ["CFrame加速"] = "CFrame加速",
+    ["Velocity加速"] = "Velocity加速",
+    ["人物高度"] = "人物高度",
+    -- 如果需要更多翻译可在此添加
+}
+
+-- 简单的翻译辅助函数
+local function GetTrans(key)
+    return Translations[key] or key
+end
+
+--------------------------------------------------------------------------------
+-- 3. 全局功能变量与工具函数
+--------------------------------------------------------------------------------
+local Flags = {} --用于存储开关状态
+local SelectedPlayer = nil -- 下拉框选中的玩家
+local TeleportOffset = CFrame.new(0, 0, 3) -- 默认传送位置（背后）
+
+-- 自动获取 UI 父级 (优先 CoreGui，其次 PlayerGui)
+local function GetUIParent()
+    local success, parent = pcall(function() return game:GetService("CoreGui") end)
+    if success and parent then return parent end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- 防止 UI 重复加载
+for _, gui in pairs(GetUIParent():GetChildren()) do
+    if gui.Name == "XA_LuaWare" then gui:Destroy() end
+end
+
+--------------------------------------------------------------------------------
+-- 4. UI 构建 (重构自原代码的 Instance.new 部分)
+--------------------------------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "XA_LuaWare"
+ScreenGui.Parent = GetUIParent()
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- 主窗口
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "Main"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BackgroundTransparency = 0.5
+MainFrame.BorderColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Position = UDim2.new(0.5, -286, 0.5, -176)
+MainFrame.Size = UDim2.new(0, 572, 0, 353)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 3)
+MainCorner.Parent = MainFrame
+
+-- 侧边栏背景
+local SideBar = Instance.new("Frame")
+SideBar.Name = "SideBar"
+SideBar.Parent = MainFrame
+SideBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SideBar.BackgroundTransparency = 0.5
+SideBar.Size = UDim2.new(0, 8, 0, 353)
+
+local SideBarCorner = Instance.new("UICorner")
+SideBarCorner.CornerRadius = UDim.new(0, 6)
+SideBarCorner.Parent = SideBar
+
+-- 侧边栏内容区
+local SideContent = Instance.new("Frame")
+SideContent.Name = "SideContent"
+SideContent.Parent = SideBar
+SideContent.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SideContent.BackgroundTransparency = 0.5
+SideContent.ClipsDescendants = true
+SideContent.Size = UDim2.new(0, 110, 0, 353)
+
+-- 侧边栏渐变
+local UIGradient = Instance.new("UIGradient")
+UIGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 40, 70)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(35, 40, 70))
+}
+UIGradient.Rotation = 90
+UIGradient.Parent = SideContent
+
+-- 标题
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "Title"
+TitleLabel.Parent = SideContent
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 5, 0, 10)
+TitleLabel.Size = UDim2.new(0, 102, 0, 20)
+TitleLabel.Font = Enum.Font.GothamSemibold
+TitleLabel.Text = "XA-Hub"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 18
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Tab 按钮滚动区
+local TabScroll = Instance.new("ScrollingFrame")
+TabScroll.Name = "TabButtons"
+TabScroll.Parent = SideContent
+TabScroll.BackgroundTransparency = 1
+TabScroll.Position = UDim2.new(0, 0, 0.1, 0)
+TabScroll.Size = UDim2.new(0, 110, 0, 310)
+TabScroll.CanvasSize = UDim2.new(0, 0, 1, 0)
+TabScroll.ScrollBarThickness = 0
+
+local TabListLayout = Instance.new("UIListLayout")
+TabListLayout.Parent = TabScroll
+TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabListLayout.Padding = UDim.new(0, 12)
+
+-- 内容显示区 (所有功能页面放在这里)
+local TabContainer = Instance.new("Frame")
+TabContainer.Name = "TabContainer"
+TabContainer.Parent = MainFrame
+TabContainer.BackgroundTransparency = 1
+TabContainer.Position = UDim2.new(0, 120, 0, 3)
+TabContainer.Size = UDim2.new(0, 448, 0, 346)
+
+-- 隐藏/打开 按钮 (小图标)
+local ToggleUIButton = Instance.new("TextButton")
+ToggleUIButton.Name = "ToggleUI"
+ToggleUIButton.Parent = ScreenGui
+ToggleUIButton.BackgroundColor3 = Color3.fromRGB(28, 33, 55)
+ToggleUIButton.Position = UDim2.new(0, 20, 0.3, 0)
+ToggleUIButton.Size = UDim2.new(0, 60, 0, 30)
+ToggleUIButton.Font = Enum.Font.SourceSans
+ToggleUIButton.Text = "隐藏/打开"
+ToggleUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleUIButton.TextSize = 14
+ToggleUIButton.Draggable = true
+ToggleUIButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+--------------------------------------------------------------------------------
+-- 5. UI 辅助构建函数 (用于创建 Tab, Section, Slider 等)
+--------------------------------------------------------------------------------
+
+local Tabs = {}
+
+local function CreateTab(name)
+    -- 创建 Tab 按钮
+    local TabButtonFrame = Instance.new("ImageLabel")
+    TabButtonFrame.Parent = TabScroll
+    TabButtonFrame.BackgroundTransparency = 1
+    TabButtonFrame.Size = UDim2.new(0, 110, 0, 24)
+    TabButtonFrame.Image = "" -- 可以设置图标
+
+    local TabLabel = Instance.new("TextLabel")
+    TabLabel.Parent = TabButtonFrame
+    TabLabel.BackgroundTransparency = 1
+    TabLabel.Position = UDim2.new(0, 15, 0, 0)
+    TabLabel.Size = UDim2.new(0, 80, 1, 0)
+    TabLabel.Font = Enum.Font.GothamSemibold
+    TabLabel.Text = GetTrans(name)
+    TabLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TabLabel.TextSize = 14
+    TabLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TabLabel.TextTransparency = 0.5
+
+    local TabBtn = Instance.new("TextButton")
+    TabBtn.Parent = TabButtonFrame
+    TabBtn.BackgroundTransparency = 1
+    TabBtn.Size = UDim2.new(1, 0, 1, 0)
+    TabBtn.Text = ""
+
+    -- 创建 Tab 页面
+    local TabPage = Instance.new("ScrollingFrame")
+    TabPage.Name = name .. "_Page"
+    TabPage.Parent = TabContainer
+    TabPage.BackgroundTransparency = 1
+    TabPage.Size = UDim2.new(1, 0, 1, 0)
+    TabPage.Visible = false
+    TabPage.ScrollBarThickness = 2
+
+    local PageLayout = Instance.new("UIListLayout")
+    PageLayout.Parent = TabPage
+    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PageLayout.Padding = UDim.new(0, 6)
+
+    -- Tab 切换逻辑
+    TabBtn.MouseButton1Click:Connect(function()
+        for _, page in pairs(TabContainer:GetChildren()) do
+            page.Visible = false
+        end
+        for _, btn in pairs(TabScroll:GetChildren()) do
+            if btn:IsA("ImageLabel") and btn:FindFirstChild("TextLabel") then
+                TweenService:Create(btn.TextLabel, TweenInfo.new(0.2), {TextTransparency = 0.5}):Play()
+            end
+        end
+        TabPage.Visible = true
+        TweenService:Create(TabLabel, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
+    end)
+
+    -- 默认选中第一个
+    if #Tabs == 0 then
+        TabPage.Visible = true
+        TabLabel.TextTransparency = 0
+    end
+    table.insert(Tabs, TabPage)
+
+    return TabPage
+end
+
+local function CreateSection(parent, text)
+    local SectionFrame = Instance.new("Frame")
+    SectionFrame.Parent = parent
+    SectionFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 70)
+    SectionFrame.BackgroundTransparency = 1
+    SectionFrame.Size = UDim2.new(0.98, 0, 0, 30) -- 初始高度
+
+    local SectionLabel = Instance.new("TextLabel")
+    SectionLabel.Parent = SectionFrame
+    SectionLabel.BackgroundTransparency = 1
+    SectionLabel.Position = UDim2.new(0, 10, 0, 0)
+    SectionLabel.Size = UDim2.new(1, -20, 0, 30)
+    SectionLabel.Font = Enum.Font.GothamSemibold
+    SectionLabel.Text = GetTrans(text)
+    SectionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SectionLabel.TextSize = 16
+    SectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local Container = Instance.new("Frame")
+    Container.Parent = parent
+    Container.BackgroundTransparency = 1
+    Container.Size = UDim2.new(0.98, 0, 0, 0)
+    Container.ClipsDescendants = false
+    
+    local ContainerLayout = Instance.new("UIListLayout")
+    ContainerLayout.Parent = Container
+    ContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ContainerLayout.Padding = UDim.new(0, 5)
+
+    ContainerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Container.Size = UDim2.new(0.98, 0, 0, ContainerLayout.AbsoluteContentSize.Y)
+    end)
